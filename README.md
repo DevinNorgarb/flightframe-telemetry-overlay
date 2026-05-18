@@ -2,6 +2,23 @@
 
 Flightframe turns drone telemetry into **cinematic overlays**: a translucent **metrics card**, optional **RC sticks**, and optional **dial gauges**—rendered to a transparent clip for your editor, plus optional **SRT** subtitles that match the overlay.
 
+## Project layout
+
+**One implementation:** all real code lives under [`flightframe/`](flightframe/) (config with `components` / `theme`, renderer, CLI, DJI import, CSV, SRT, encoding).
+
+[`opendronelog_overlay/`](opendronelog_overlay/) is a **compatibility shim only**—each module re-exports the matching `flightframe.*` API so old `import opendronelog_overlay...` lines keep working. **Prefer `import flightframe...` in new code.**
+
+| Command / import | Notes |
+| --- | --- |
+| **`flightframe`** CLI | Primary (`pip install -e .`). |
+| **`opendronelog-overlay`** CLI | Same app as `flightframe` (entry point `flightframe.cli:app`); name kept for legacy scripts. |
+
+**Streamlit frontend:** [`app.py`](app.py) — upload video + telemetry, alignment preview, overlay export, optional “Build config” canvas, and CSV → AirData conversion.
+
+```bash
+streamlit run app.py
+```
+
 > [!IMPORTANT]
 > *DJI is a registered trademark of SZ DJI Technology Co., Ltd. DroneLogbook® is a registered trademark of DroneAnalytics Inc. Litchi is a trademark of VC Technology Ltd. Airdata or Airdata UAV is a trademark of Airdata UAV, Inc. This project is independent and is not affiliated with, sponsored by, authorized by, or endorsed by SZ DJI Technology Co., Ltd., DroneAnalytics Inc., VC Technology Ltd., Airdata UAV, Inc., or their affiliates.*
 
@@ -17,11 +34,17 @@ Enable gauges in YAML with `gauges.enabled: true`. See [`examples/gauges.config.
 
 ## Features
 
+- **CLI** — Commands: `render`, `srt`, `import-dji`. **`flightframe`** is the main command; **`opendronelog-overlay`** invokes the same `flightframe` CLI for backwards compatibility.
+- **Local UI** — Streamlit workflow in [`app.py`](app.py): alignment sliders, previews, overlay + SRT export, DJI FlightRecord `.txt` import (via external `djirecord`), YAML layout builder (`streamlit-drawable-canvas`).
 - **Telemetry card** — Pick columns, labels, decimals, and `metric` / `imperial` / `auto` units.
 - **Dial gauges** — Three semi-circular dials (speed, height, battery) with auto-scaled ranges from your flight data; customizable colors and placement (including auto-stacking below the card).
 - **RC sticks** — Optional mini stick positions when your CSV includes RC channels.
 - **Transparent `.mov`** — Alpha-friendly output (`png` or `qtrle` codec).
 - **SRT export** — Optional subtitle track with the same selected fields.
+
+### Input directory shortcuts
+
+Commands that take `--input-csv` / `--input-txt` accept a **directory**: the CLI picks the **newest** file matching common patterns (`FlightRecord*.csv`, `DJIFlightRecord*.txt`, etc.). You can instead pass `--input-dir` when you omit the explicit file path—see `--help`.
 
 ## Why this stack
 
@@ -38,6 +61,8 @@ git clone https://github.com/DevinNorgarb/opendronelog-overlay.git
 cd opendronelog-overlay
 pip install -e .
 ```
+
+The PyPI-compatible distribution name is **`flightframe-telemetry-overlay`** (see `pyproject.toml`). Older docs or clones may refer to **`opendronelog-overlay`**; the GitHub repo name can stay unchanged while branding is Flightframe.
 
 ## Run
 
@@ -108,13 +133,15 @@ flightframe import-dji \
   --output-airdata-csv ./out/flight.airdata.csv
 ```
 
-This command shells out to `djirecord` (from `pydjirecord`). Install it via `pipx` to avoid dependency conflicts:
+This command shells out to `djirecord` (from `pydjirecord`). Install it via `pipx` to keep it isolated from this project’s Python:
 
 ```bash
 brew install pipx
 pipx ensurepath
 pipx install pydjirecord
 ```
+
+If you install `pydjirecord` in the **same** environment as Streamlit (e.g. global `pip install pydjirecord`) and see `VersionError: gencode ... runtime ...` from Protobuf, your `protobuf` package is too old. Reinstall this project so dependencies align: `pip install -e .` (it pins `protobuf>=6.31.1` and a recent Streamlit that no longer forces `protobuf<6`).
 
 ## Configuration
 

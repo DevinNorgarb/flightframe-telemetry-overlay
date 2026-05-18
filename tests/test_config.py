@@ -7,7 +7,6 @@ import pytest
 import yaml
 
 from flightframe.config import GaugesConfig, OverlayConfig, load_config
-from opendronelog_overlay.config import load_config as load_config_with_components
 
 
 class TestDefaultConfig:
@@ -169,7 +168,7 @@ class TestComponentsSchema:
         yaml.dump(raw, tmp)
         tmp.close()
         with pytest.raises(ValueError, match="Duplicate component id"):
-            load_config_with_components(Path(tmp.name))
+            load_config(Path(tmp.name))
 
     def test_theme_is_validated(self):
         raw = {
@@ -182,4 +181,4 @@ class TestComponentsSchema:
         yaml.dump(raw, tmp)
         tmp.close()
         with pytest.raises(ValueError, match="theme.accent_hex"):
-            load_config_with_components(Path(tmp.name))
+            load_config(Path(tmp.name))

@@ -106,7 +106,7 @@ def _map_djirecord_csv_to_odl_csv(*, raw_csv: Path, output_csv: Path) -> None:
         w = csv.DictWriter(f, fieldnames=out_headers)
         w.writeheader()
 
-        for r in rows:
+        for idx, r in enumerate(rows):
             t = _parse_float(r.get(time_key))
             if t is None:
                 continue
@@ -270,10 +270,8 @@ def _build_field_map(headers: list[str]) -> dict[str, str]:
 
 def _extract_speed_value(row: dict[str, str], headers: list[str]) -> tuple[float | None, str]:
     lower_to_orig = {h.strip().lower(): h for h in headers}
-
     def has(col: str) -> bool:
         return col.strip().lower() in lower_to_orig
-
     def get(col: str) -> str | None:
         k = col.strip().lower()
         if k not in lower_to_orig:
@@ -281,16 +279,7 @@ def _extract_speed_value(row: dict[str, str], headers: list[str]) -> tuple[float
         return row.get(lower_to_orig[k])
 
     # Prefer explicit m/s columns if present.
-    for key in [
-        "speed_ms",
-        "speed(m/s)",
-        "speed",
-        "osd.speed",
-        "osd.hspeed",
-        "osd.xspeed",
-        "osd.yspeed",
-        "osd.zspeed",
-    ]:
+    for key in ["speed_ms", "speed(m/s)", "speed", "osd.speed", "osd.hspeed", "osd.xspeed", "osd.yspeed", "osd.zspeed"]:
         if has(key):
             v = _parse_float(get(key))
             if v is not None:

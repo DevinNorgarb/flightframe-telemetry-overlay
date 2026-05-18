@@ -11,16 +11,10 @@ from streamlit_drawable_canvas import st_canvas
 
 from flightframe.ODL_2_AD import convert_odl_to_airdata
 from flightframe.cli import render as cli_render
+from flightframe.config import ComponentRect, OverlayComponent, OverlayConfig, dump_config_yaml, load_config
 from flightframe.csv_parser import TelemetryData, load_telemetry
 from flightframe.dji_import import convert_dji_txt_to_odl_csv_via_djirecord
-from opendronelog_overlay.config import (
-    ComponentRect,
-    OverlayComponent,
-    OverlayConfig,
-    dump_config_yaml,
-    load_config,
-)
-from opendronelog_overlay.renderer import _draw_overlay_rgba
+from flightframe.renderer import _draw_overlay_rgba
 
 
 st.set_page_config(page_title="OpenDroneLog Overlay", page_icon="🚁", layout="wide")
