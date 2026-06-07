@@ -43,6 +43,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=-10.0, min_val=0.0, max_val=100.0,
             label="Test", unit="m",
+            style="dial",
             **GAUGE_COLORS,
         )
 
@@ -52,6 +53,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=200.0, min_val=0.0, max_val=100.0,
             label="Test", unit="m",
+            style="dial",
             **GAUGE_COLORS,
         )
 
@@ -61,6 +63,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=None, min_val=0.0, max_val=100.0,
             label="N/A", unit="",
+            style="dial",
             **GAUGE_COLORS,
         )
 
@@ -70,6 +73,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=50.0, min_val=100.0, max_val=100.0,
             label="Flat", unit="",
+            style="dial",
             **GAUGE_COLORS,
         )
 
@@ -79,6 +83,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=50.0, min_val=0.0, max_val=100.0,
             label="Half", unit="%",
+            style="dial",
             **GAUGE_COLORS,
         )
         expected_angle = math.radians(GAUGE_START_DEG + 0.5 * GAUGE_SWEEP)
@@ -90,6 +95,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=0.0, min_val=0.0, max_val=100.0,
             label="Zero", unit="",
+            style="dial",
             **GAUGE_COLORS,
         )
         start_rad = math.radians(GAUGE_START_DEG)
@@ -102,6 +108,7 @@ class TestGaugeNormalization:
             frame, 10, 10, 180, 180,
             value=100.0, min_val=0.0, max_val=100.0,
             label="Max", unit="",
+            style="dial",
             **GAUGE_COLORS,
         )
         end_rad = math.radians(GAUGE_END_DEG)
@@ -111,6 +118,17 @@ class TestGaugeNormalization:
     def test_gauge_sweep_is_reasonable(self):
         assert 200 <= GAUGE_SWEEP <= 280
 
+    def test_hud_style_does_not_crash(self):
+        frame = _make_frame(320, 160)
+        _draw_gauge_rgba(
+            frame, 10, 10, 300, 140,
+            value=42.5, min_val=0.0, max_val=100.0,
+            label="Speed", unit="m/s", field="speed",
+            style="hud",
+            **GAUGE_COLORS,
+        )
+        assert frame[:, :, 3].max() > 0
+
 
 class TestGaugeDrawingBounds:
     def test_small_gauge_does_not_crash(self):
@@ -119,6 +137,7 @@ class TestGaugeDrawingBounds:
             frame, 5, 5, 60, 60,
             value=42.0, min_val=0.0, max_val=100.0,
             label="Tiny", unit="m",
+            style="dial",
             **GAUGE_COLORS,
         )
 
@@ -128,6 +147,7 @@ class TestGaugeDrawingBounds:
             frame, 160, 160, 80, 80,
             value=50.0, min_val=0.0, max_val=100.0,
             label="Edge", unit="",
+            style="dial",
             **GAUGE_COLORS,
         )
 

@@ -7,7 +7,6 @@ import pytest
 import yaml
 
 from flightframe.config import GaugesConfig, OverlayConfig, load_config
-from opendronelog_overlay.config import load_config as load_config_with_components
 
 
 class TestDefaultConfig:
@@ -16,7 +15,8 @@ class TestDefaultConfig:
         assert cfg.gauges.enabled is False
         assert cfg.gauges.layout == "horizontal"
         assert cfg.gauges.width == 140
-        assert cfg.gauges.height == 140
+        assert cfg.gauges.height == 160
+        assert cfg.gauges.style == "hud"
 
     def test_default_config_is_complete(self):
         cfg = OverlayConfig()
@@ -55,6 +55,11 @@ class TestGaugeValidation:
     def test_invalid_layout_rejected(self):
         path = self._write_config({"gauges": {"enabled": True, "layout": "diagonal"}})
         with pytest.raises(ValueError, match="gauges.layout"):
+            load_config(path)
+
+    def test_invalid_style_rejected(self):
+        path = self._write_config({"gauges": {"enabled": True, "style": "radial"}})
+        with pytest.raises(ValueError, match="gauges.style"):
             load_config(path)
 
     def test_valid_layout_horizontal(self):
@@ -169,7 +174,7 @@ class TestComponentsSchema:
         yaml.dump(raw, tmp)
         tmp.close()
         with pytest.raises(ValueError, match="Duplicate component id"):
-            load_config_with_components(Path(tmp.name))
+            load_config(Path(tmp.name))
 
     def test_theme_is_validated(self):
         raw = {
@@ -182,4 +187,4 @@ class TestComponentsSchema:
         yaml.dump(raw, tmp)
         tmp.close()
         with pytest.raises(ValueError, match="theme.accent_hex"):
-            load_config_with_components(Path(tmp.name))
+            load_config(Path(tmp.name))

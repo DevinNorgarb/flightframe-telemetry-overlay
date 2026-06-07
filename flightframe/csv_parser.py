@@ -37,6 +37,23 @@ NUMERIC_FIELD_ALIASES = {
     "rc_elevator": ["rc_elevator"],
     "rc_throttle": ["rc_throttle"],
     "rc_rudder": ["rc_rudder"],
+    # Heading/yaw fields for compass components. Different exporters use different names.
+    "heading_deg": [
+        "heading_deg",
+        "yaw_deg",
+        "compass_heading_deg",
+        "compass_heading(degrees)",
+        " compass_heading(degrees)",
+    ],
+    "gimbal_heading_deg": [
+        "gimbal_heading_deg",
+        "gimbal_yaw_deg",
+        "gimbal_heading(degrees)",
+    ],
+    "pitch_deg": ["pitch_deg", "gimbal_pitch_deg", "pitch(degrees)"],
+    "g_force": ["g_force", "gforce", "g_total"],
+    "g_force_x": ["g_force_x", "accel_x_g"],
+    "g_force_y": ["g_force_y", "accel_y_g"],
 }
 
 TEXT_FIELD_ALIASES = {
@@ -162,5 +179,12 @@ def _convert_units_if_needed(
         if source_unit == "C" and unit_system == "imperial":
             return values * (9.0 / 5.0) + 32.0, "F"
 
-    return values, source_unit
+    if field == "pitch_deg":
+        return values, "°"
 
+    if field in {"heading_deg", "gimbal_heading_deg"}:
+        v = np.mod(values, 360.0)
+        v = np.where(v < 0, v + 360.0, v)
+        return v, "deg"
+
+    return values, source_unit

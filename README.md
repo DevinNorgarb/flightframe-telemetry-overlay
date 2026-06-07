@@ -52,7 +52,7 @@ flightframe render \
   -v
 ```
 
-Use [`examples/gauges.config.yaml`](examples/gauges.config.yaml) instead of `overlay.config.yaml` when you want dial gauges enabled.
+Use [`examples/gauges.config.yaml`](examples/gauges.config.yaml) for HUD dial gauges, or [`examples/dashboard.config.yaml`](examples/dashboard.config.yaml) for the full DJI-style corner dashboard.
 
 Add SRT subtitles with the same telemetry selection:
 
@@ -150,21 +150,39 @@ Common options:
 > [!NOTE]
 > Gauges are **experimental** and **off** unless you set `gauges.enabled: true`.
 
-When enabled, the renderer draws **speed**, **height**, and **battery** dials. Ranges scale from your telemetry (with sensible fallbacks). Placement: set `gauges.x` to `-1` to auto-stack full-width rows under the text panel (default), or use non-negative `gauges.x` / `gauges.y` with `gauges.layout` `horizontal` or `vertical`.
+When enabled, the renderer draws **speed**, **height**, and **battery** gauges. The default **`hud`** style uses a DJI-inspired digital readout with a color-gradient arc (green → yellow → orange → red), large centered value, and transparent background. Set `gauges.style: dial` for the classic needle dials with dark panels.
+
+Ranges scale from your telemetry (with sensible fallbacks). Placement: set `gauges.x` to `-1` to auto-stack full-width rows under the text panel (default), or use non-negative `gauges.x` / `gauges.y` with `gauges.layout` `horizontal` or `vertical`.
 
 If a gauge row lands below the frame, it is skipped—increase `transparent_output.height`, reduce `gauges.height` / `gauges.gap`, or turn off `rc_sticks` when you need more room for stacked dials.
 
 | Key | Purpose |
 | --- | --- |
 | `gauges.enabled` | Turn gauge rendering on or off (default `false`). |
+| `gauges.style` | `hud` (DJI-style digital ring, default) or `dial` (classic needle). |
+| `gauges.show_panel` | Draw a dark panel behind HUD gauges (default `false`). |
 | `gauges.layout` | `horizontal` or `vertical` (for manual `x`/`y` placement). |
-| `gauges.width` / `gauges.height` | Dial size in pixels (default height `140`; width ignored in auto placement). |
+| `gauges.width` / `gauges.height` | Gauge size in pixels (default height `160`; width ignored in auto placement). |
 | `gauges.x` | Horizontal offset; **`-1`** = auto placement below the card. |
 | `gauges.y` | Vertical offset when `gauges.x >= 0`. |
-| `gauges.gap` | Space between dials. |
+| `gauges.gap` | Space between gauges. |
 | `gauges.*_color_hex` | `arc`, `needle`, `tick`, `label`, and `value` colors. |
 
-Telemetry keys supported elsewhere in the overlay (card/SRT) include: `height`, `speed`, `distance_to_home`, `battery`, `satellites`, `lat`, `lng`, `flight_mode`, `altitude`, `battery_voltage`, `battery_temp`.
+### DJI dashboard
+
+Set `dashboard.enabled: true` for a full-screen HUD inspired by DJI Fly. See [`examples/dashboard.config.yaml`](examples/dashboard.config.yaml).
+
+| Corner | Widget |
+| --- | --- |
+| Top-left | Date/time + altitude, slope, distance, battery |
+| Bottom-left | GPS mini-map with green path trail and heading arrow |
+| Top-right | G-force puck (from telemetry or estimated from speed/heading changes) |
+| Bottom-right | Large speed ring |
+| Bottom-center | Heading badge |
+
+By default the classic telemetry card is hidden (`dashboard.show_classic_panel: false`). Optional `dashboard.start_datetime` anchors wall-clock date/time (e.g. `2026-06-01 23:12:16`).
+
+Telemetry keys supported elsewhere in the overlay (card/SRT) include: `height`, `speed`, `distance_to_home`, `battery`, `satellites`, `lat`, `lng`, `flight_mode`, `altitude`, `battery_voltage`, `battery_temp`, `heading_deg`, `pitch_deg`.
 
 ## AirData CSV conversion
 

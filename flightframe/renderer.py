@@ -9,7 +9,7 @@ import time
 import cv2
 import numpy as np
 
-from .config import OverlayConfig
+from .config import OverlayComponent, OverlayConfig, ThemeConfig
 from .csv_parser import TelemetryData
 from .encoding import FfmpegEncodingConfig, FfmpegFrameEncoder, FrameEncoder
 
@@ -197,6 +197,17 @@ def _render_overlay_frames_to_encoder(
 
 
 def _draw_overlay_rgba(frame: np.ndarray, t: float, telemetry: TelemetryData, config: OverlayConfig) -> np.ndarray:
+    if config.components:
+        _draw_components_rgba(frame, t, telemetry, config)
+        return frame
+
+    if config.dashboard.enabled:
+        from .dashboard import draw_dji_dashboard_rgba
+
+        draw_dji_dashboard_rgba(frame, t, telemetry, config)
+        if not config.dashboard.show_classic_panel:
+            return frame
+
     panel = config.video
     fields = config.telemetry.include
 
@@ -261,10 +272,341 @@ def _draw_overlay_rgba(frame: np.ndarray, t: float, telemetry: TelemetryData, co
         y_cursor += 20
         _draw_rc_sticks_rgba(frame, x + 14, y_cursor, telemetry, t, config, stick_label_color=muted_color)
 
-    if config.gauges.enabled:
+    if config.gauges.enabled and not config.dashboard.enabled:
         _draw_gauges_strip_rgba(frame, telemetry, t, config, panel.x, panel.y, panel.width, panel_h)
 
     return frame
+
+
+def _draw_components_rgba(frame: np.ndarray, t: float, telemetry: TelemetryData, config: OverlayConfig) -> None:
+    theme = config.theme
+    for comp in config.components:
+        _draw_component_rgba(frame, t, telemetry, config, theme, comp)
+
+
+def _draw_component_rgba(
+    frame: np.ndarray,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    r = comp.rect
+    x, y, w, h = r.x, r.y, r.w, r.h
+    if w <= 0 or h <= 0:
+        return
+    if x >= frame.shape[1] or y >= frame.shape[0]:
+        return
+    if x + w <= 0 or y + h <= 0:
+        return
+
+    if comp.type == "value_card":
+        _draw_value_card_component_rgba(frame, x, y, w, h, t, telemetry, overlay_cfg, theme, comp)
+        return
+    if comp.type == "rc_sticks":
+        _draw_rc_sticks_component_rgba(frame, x, y, w, h, t, telemetry, overlay_cfg, theme, comp)
+        return
+    if comp.type == "dial_gauge":
+        _draw_dial_gauge_component_rgba(frame, x, y, w, h, t, telemetry, overlay_cfg, theme, comp)
+        return
+    if comp.type == "sparkline":
+        _draw_sparkline_component_rgba(frame, x, y, w, h, t, telemetry, overlay_cfg, theme, comp)
+        return
+    if comp.type == "compass":
+        _draw_compass_component_rgba(frame, x, y, w, h, t, telemetry, overlay_cfg, theme, comp)
+        return
+
+
+def _theme_hex(theme: ThemeConfig, comp: OverlayComponent, key: str) -> str:
+    v = comp.style.get(key)
+    if isinstance(v, str) and v.strip():
+        return v
+    return getattr(theme, key)
+
+
+def _draw_value_card_component_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    fields = comp.config.get("fields")
+    if not isinstance(fields, list) or not fields:
+        fields = overlay_cfg.telemetry.include
+
+    row_h = int(comp.config.get("row_height", overlay_cfg.video.row_height) or overlay_cfg.video.row_height)
+    row_h = max(16, row_h)
+    padding = int(comp.config.get("padding", 14) or 14)
+    padding = max(6, padding)
+    corner = int(comp.config.get("corner_radius", overlay_cfg.video.corner_radius) or overlay_cfg.video.corner_radius)
+    opacity = float(comp.config.get("opacity", overlay_cfg.video.opacity) or overlay_cfg.video.opacity)
+
+    panel_bg = _theme_hex(theme, comp, "panel_bg_hex")
+    label_hex = _theme_hex(theme, comp, "label_text_hex")
+    value_hex = _theme_hex(theme, comp, "value_text_hex")
+    muted_hex = _theme_hex(theme, comp, "muted_text_hex")
+
+    _draw_rounded_panel_rgba(frame, x, y, w, h, corner, opacity, panel_bg)
+
+    label_color = _hex_to_bgra(label_hex, 255)
+    value_color = _hex_to_bgra(value_hex, 255)
+    muted_color = _hex_to_bgra(muted_hex, 255)
+
+    title = comp.config.get("title")
+    y_cursor = y + padding + 2
+    if isinstance(title, str) and title.strip():
+        cv2.putText(frame, title, (x + padding, y_cursor + 12), cv2.FONT_HERSHEY_SIMPLEX, 0.46, muted_color, 1, cv2.LINE_AA)
+        y_cursor += 22
+
+    for field in fields:
+        if not isinstance(field, str):
+            continue
+        line = _format_field_line(field, t, telemetry, overlay_cfg)
+        if line is None:
+            continue
+        label, value = line
+        cv2.putText(frame, label, (x + padding, y_cursor), cv2.FONT_HERSHEY_SIMPLEX, 0.54, label_color, 1, cv2.LINE_AA)
+        text_size = cv2.getTextSize(value, cv2.FONT_HERSHEY_SIMPLEX, 0.58, 1)[0]
+        cv2.putText(
+            frame,
+            value,
+            (x + w - padding - text_size[0], y_cursor),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            value_color,
+            1,
+            cv2.LINE_AA,
+        )
+        y_cursor += row_h
+
+
+def _draw_rc_sticks_component_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    corner = int(comp.config.get("corner_radius", 12) or 12)
+    opacity = float(comp.config.get("opacity", 0.46) or 0.46)
+    panel_bg = comp.style.get("panel_bg_hex")
+    if not isinstance(panel_bg, str) or not panel_bg.strip():
+        panel_bg = "#000000"
+    _draw_rounded_panel_rgba(frame, x, y, w, h, corner, opacity, panel_bg)
+
+    label_hex = _theme_hex(theme, comp, "muted_text_hex")
+    label_color = _hex_to_bgra(label_hex, 255)
+
+    title = comp.config.get("title", overlay_cfg.rc_sticks.title)
+    if not isinstance(title, str):
+        title = overlay_cfg.rc_sticks.title
+    cv2.putText(frame, title, (x + 12, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.46, label_color, 1, cv2.LINE_AA)
+
+    sticks_y = y + 34
+    sticks_x = x + 12
+    _draw_rc_sticks_rgba(frame, sticks_x, sticks_y, telemetry, t, overlay_cfg, stick_label_color=label_color)
+
+
+def _draw_dial_gauge_component_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    field = comp.config.get("field")
+    if not isinstance(field, str) or not field.strip():
+        field = "speed"
+    label = comp.config.get("label")
+    if not isinstance(label, str) or not label.strip():
+        label = field.replace("_", " ").title()
+
+    v = _sample_numeric(telemetry, field, t)
+    unit = telemetry.units.get(field, "")
+
+    fallback_min = float(comp.config.get("min", 0.0) or 0.0)
+    fallback_max = float(comp.config.get("max", 100.0) or 100.0)
+    val_min = fallback_min
+    val_max = fallback_max
+    if v is not None and telemetry.numeric.get(field) is not None:
+        data = telemetry.numeric[field]
+        val_max = max(float(np.max(data)) * 1.15, fallback_max * 0.5)
+        if val_max <= val_min:
+            val_max = fallback_max
+
+    arc = comp.style.get("arc_hex")
+    if not isinstance(arc, str) or not arc.strip():
+        arc = theme.arc_hex
+    tick = comp.style.get("tick_hex")
+    if not isinstance(tick, str) or not tick.strip():
+        tick = theme.tick_hex
+    accent = comp.style.get("accent_hex")
+    if not isinstance(accent, str) or not accent.strip():
+        accent = theme.accent_hex
+    label_hex = _theme_hex(theme, comp, "label_text_hex")
+    value_hex = _theme_hex(theme, comp, "value_text_hex")
+
+    _draw_gauge_rgba(
+        frame,
+        x,
+        y,
+        w,
+        h,
+        value=v,
+        min_val=val_min,
+        max_val=val_max,
+        label=label,
+        unit=unit,
+        arc_color=_hex_to_bgra(arc, 255),
+        needle_color=_hex_to_bgra(accent, 255),
+        tick_color=_hex_to_bgra(tick, 200),
+        label_color=_hex_to_bgra(label_hex, 255),
+        value_color=_hex_to_bgra(value_hex, 255),
+    )
+
+
+def _draw_sparkline_component_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    field = comp.config.get("field")
+    if not isinstance(field, str) or not field.strip():
+        field = "speed"
+
+    window_s = float(comp.config.get("window_s", 5.0) or 5.0)
+    window_s = max(0.5, window_s)
+
+    corner = int(comp.config.get("corner_radius", 12) or 12)
+    opacity = float(comp.config.get("opacity", 0.46) or 0.46)
+    panel_bg = comp.style.get("panel_bg_hex")
+    if not isinstance(panel_bg, str) or not panel_bg.strip():
+        panel_bg = "#000000"
+    _draw_rounded_panel_rgba(frame, x, y, w, h, corner, opacity, panel_bg)
+
+    accent = comp.style.get("accent_hex")
+    if not isinstance(accent, str) or not accent.strip():
+        accent = theme.accent_hex
+
+    values = telemetry.numeric.get(field)
+    if values is None:
+        na = _hex_to_bgra(theme.muted_text_hex, 255)
+        cv2.putText(frame, "n/a", (x + 12, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, na, 1, cv2.LINE_AA)
+        return
+
+    t0 = t - window_s
+    t1 = t
+    n = int(comp.config.get("samples", 60) or 60)
+    n = max(10, min(300, n))
+    ts = np.linspace(t0, t1, n)
+    ys = np.interp(ts, telemetry.time_s, values)
+
+    y_min = float(comp.config.get("y_min")) if isinstance(comp.config.get("y_min"), (int, float)) else float(np.min(ys))
+    y_max = float(comp.config.get("y_max")) if isinstance(comp.config.get("y_max"), (int, float)) else float(np.max(ys))
+    if y_max <= y_min:
+        y_max = y_min + 1.0
+
+    pad = 10
+    x0 = x + pad
+    y0 = y + pad
+    x1 = x + w - pad
+    y1 = y + h - pad
+    if x1 <= x0 or y1 <= y0:
+        return
+
+    pts: list[tuple[int, int]] = []
+    for i in range(n):
+        px = int(x0 + (i / (n - 1)) * (x1 - x0))
+        norm = (ys[i] - y_min) / (y_max - y_min)
+        py = int(y1 - norm * (y1 - y0))
+        pts.append((px, py))
+    for i in range(1, len(pts)):
+        cv2.line(frame, pts[i - 1], pts[i], _hex_to_bgra(accent, 255), 2, cv2.LINE_AA)
+
+    label = comp.config.get("label")
+    if isinstance(label, str) and label.strip():
+        txt = _hex_to_bgra(theme.muted_text_hex, 255)
+        cv2.putText(frame, label, (x + 12, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.46, txt, 1, cv2.LINE_AA)
+
+
+def _draw_compass_component_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    t: float,
+    telemetry: TelemetryData,
+    overlay_cfg: OverlayConfig,
+    theme: ThemeConfig,
+    comp: OverlayComponent,
+) -> None:
+    field = comp.config.get("field")
+    if not isinstance(field, str) or not field.strip():
+        field = "heading_deg"
+
+    corner = int(comp.config.get("corner_radius", 12) or 12)
+    opacity = float(comp.config.get("opacity", 0.46) or 0.46)
+    panel_bg = comp.style.get("panel_bg_hex")
+    if not isinstance(panel_bg, str) or not panel_bg.strip():
+        panel_bg = "#000000"
+    _draw_rounded_panel_rgba(frame, x, y, w, h, corner, opacity, panel_bg)
+
+    heading = _sample_numeric(telemetry, field, t)
+    if heading is None:
+        na = _hex_to_bgra(theme.muted_text_hex, 255)
+        cv2.putText(frame, "n/a", (x + 12, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, na, 1, cv2.LINE_AA)
+        return
+
+    accent = comp.style.get("accent_hex")
+    if not isinstance(accent, str) or not accent.strip():
+        accent = theme.accent_hex
+
+    txt = _hex_to_bgra(theme.value_text_hex, 255)
+    muted = _hex_to_bgra(theme.muted_text_hex, 255)
+    cx = x + w // 2
+    cy = y + h // 2
+    r = max(14, min(w, h) // 3)
+    cv2.circle(frame, (cx, cy), r, _hex_to_bgra(theme.tick_hex, 180), 2, cv2.LINE_AA)
+    ang = np.deg2rad(float(heading) - 90.0)
+    ax = int(cx + r * 0.9 * np.cos(ang))
+    ay = int(cy + r * 0.9 * np.sin(ang))
+    cv2.line(frame, (cx, cy), (ax, ay), _hex_to_bgra(accent, 255), 3, cv2.LINE_AA)
+    cv2.circle(frame, (cx, cy), 3, _hex_to_bgra(accent, 255), -1, cv2.LINE_AA)
+
+    deg = f"{heading:05.1f}°"
+    deg_size = cv2.getTextSize(deg, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)[0]
+    cv2.putText(frame, deg, (cx - deg_size[0] // 2, y + h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.55, txt, 1, cv2.LINE_AA)
+
+    label = comp.config.get("label")
+    if not isinstance(label, str) or not label.strip():
+        label = "Heading"
+    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.46, 1)[0]
+    cv2.putText(frame, label, (cx - label_size[0] // 2, y + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.46, muted, 1, cv2.LINE_AA)
 
 
 def _draw_rounded_panel_rgba(
@@ -477,6 +819,9 @@ def _draw_gauges_strip_rgba(
             max_val=val_max,
             label=label,
             unit=unit,
+            field=field,
+            style=gc.style,
+            show_panel=gc.show_panel,
             arc_color=arc_color,
             needle_color=needle_color,
             tick_color=tick_color,
@@ -489,8 +834,261 @@ GAUGE_START_DEG = 140
 GAUGE_END_DEG = 400
 GAUGE_SWEEP = GAUGE_END_DEG - GAUGE_START_DEG
 
+_SPEED_GRADIENT: list[tuple[float, tuple[int, int, int, int]]] = [
+    (0.00, (70, 220, 60, 255)),
+    (0.35, (0, 230, 255, 255)),
+    (0.65, (0, 160, 255, 255)),
+    (1.00, (40, 40, 255, 255)),
+]
+_BATTERY_GRADIENT: list[tuple[float, tuple[int, int, int, int]]] = [
+    (0.00, (70, 220, 60, 255)),
+    (0.45, (0, 230, 255, 255)),
+    (1.00, (40, 40, 255, 255)),
+]
+_HEIGHT_GRADIENT: list[tuple[float, tuple[int, int, int, int]]] = [
+    (0.00, (200, 210, 255, 220)),
+    (1.00, (120, 200, 255, 255)),
+]
+
+
+def _gauge_gradient_stops(field: str) -> list[tuple[float, tuple[int, int, int, int]]]:
+    if field == "battery":
+        return _BATTERY_GRADIENT
+    if field == "height":
+        return _HEIGHT_GRADIENT
+    return _SPEED_GRADIENT
+
+
+def _sample_gradient(stops: list[tuple[float, tuple[int, int, int, int]]], t: float) -> tuple[int, int, int, int]:
+    t = max(0.0, min(1.0, t))
+    for idx in range(len(stops) - 1):
+        t0, c0 = stops[idx]
+        t1, c1 = stops[idx + 1]
+        if t <= t1:
+            if t1 <= t0:
+                return c1
+            blend = (t - t0) / (t1 - t0)
+            return tuple(int(c0[i] + (c1[i] - c0[i]) * blend) for i in range(4))
+    return stops[-1][1]
+
+
+def _lerp_bgra(a: tuple[int, int, int, int], b: tuple[int, int, int, int], t: float) -> tuple[int, int, int, int]:
+    return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(4))
+
+
+def _put_text_hud(
+    frame: np.ndarray,
+    text: str,
+    org: tuple[int, int],
+    font_scale: float,
+    color: tuple[int, int, int, int],
+    *,
+    thickness: int = 2,
+) -> None:
+    shadow = (0, 0, 0, 160)
+    x, y = org
+    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (0, 2)):
+        cv2.putText(
+            frame, text, (x + dx, y + dy),
+            cv2.FONT_HERSHEY_DUPLEX, font_scale, shadow, thickness + 1, cv2.LINE_AA,
+        )
+    cv2.putText(
+        frame, text, org,
+        cv2.FONT_HERSHEY_DUPLEX, font_scale, color, thickness, cv2.LINE_AA,
+    )
+
+
+def _format_gauge_value(value: float, field: str, unit: str) -> tuple[str, str]:
+    if field == "speed":
+        return str(int(round(value))), unit.upper() if unit else ""
+    if field == "battery":
+        return str(int(round(value))), "%" if not unit else unit
+    if field == "height":
+        return f"{value:.0f}" if value >= 10 else f"{value:.1f}", unit
+    if value == int(value):
+        return str(int(value)), unit
+    return f"{value:.1f}", unit
+
+
+def _draw_gradient_arc_rgba(
+    frame: np.ndarray,
+    cx: int,
+    cy: int,
+    r: int,
+    start_deg: float,
+    sweep_deg: float,
+    thickness: int,
+    stops: list[tuple[float, tuple[int, int, int, int]]],
+    fill_norm: float | None = None,
+) -> None:
+    steps = 28
+    for step in range(steps):
+        t0 = step / steps
+        t1 = (step + 1) / steps
+        if fill_norm is not None:
+            if t0 >= fill_norm:
+                break
+            t1 = min(t1, fill_norm)
+        if t1 <= t0:
+            break
+        color = _sample_gradient(stops, (t0 + t1) * 0.5)
+        a0 = start_deg + t0 * sweep_deg
+        a1 = start_deg + t1 * sweep_deg
+        cv2.ellipse(frame, (cx, cy), (r, r), 0, a0, a1, color, thickness, cv2.LINE_AA)
+
+
+def _hud_gauge_geometry(x: int, y: int, w: int, h: int) -> tuple[int, int, int, bool]:
+    wide_layout = w >= int(h * 1.35)
+    if wide_layout:
+        r = int(min(h * 0.44, w * 0.24))
+        r = max(22, r)
+        cx = x + w - r - 28
+        cy = y + h // 2
+    else:
+        cx = x + w // 2
+        cy = y + int(h * 0.50)
+        r = int(min(w, h) * 0.40)
+        r = max(18, r)
+    return cx, cy, r, wide_layout
+
+
+def _draw_hud_gauge_rgba(
+    frame: np.ndarray,
+    x: int, y: int, w: int, h: int,
+    value: float | None,
+    min_val: float, max_val: float,
+    label: str, unit: str,
+    field: str,
+    tick_color: tuple[int, int, int, int],
+    label_color: tuple[int, int, int, int],
+    value_color: tuple[int, int, int, int],
+) -> None:
+    cx, cy, r, wide_layout = _hud_gauge_geometry(x, y, w, h)
+    track_thickness = max(2, int(r * 0.07))
+    arc_thickness = max(4, int(r * 0.13))
+
+    if value is None or max_val <= min_val:
+        norm = 0.0
+        active = False
+    else:
+        norm = max(0.0, min(1.0, (value - min_val) / (max_val - min_val)))
+        active = True
+
+    track_color = _lerp_bgra(tick_color, (0, 0, 0, 0), 0.72)
+    cv2.ellipse(
+        frame, (cx, cy), (r, r), 0,
+        GAUGE_START_DEG, GAUGE_END_DEG, track_color, track_thickness, cv2.LINE_AA,
+    )
+
+    if active:
+        _draw_gradient_arc_rgba(
+            frame, cx, cy, r, GAUGE_START_DEG, GAUGE_SWEEP, arc_thickness,
+            _gauge_gradient_stops(field), fill_norm=norm,
+        )
+
+    top_angle = math.radians(270)
+    inner = r - arc_thickness // 2 - 2
+    outer = r + arc_thickness // 2 + 4
+    tx0 = cx + int(inner * math.cos(top_angle))
+    ty0 = cy + int(inner * math.sin(top_angle))
+    tx1 = cx + int(outer * math.cos(top_angle))
+    ty1 = cy + int(outer * math.sin(top_angle))
+    cv2.line(frame, (tx0, ty0), (tx1, ty1), tick_color, 2, cv2.LINE_AA)
+
+    if wide_layout:
+        label_x = x + 22
+        label_baseline = y + h // 2 - 6
+        _put_text_hud(
+            frame, label.upper(), (label_x, label_baseline),
+            font_scale=0.46, color=label_color, thickness=1,
+        )
+        if active:
+            val_str, unit_str = _format_gauge_value(value, field, unit)
+            _put_text_hud(
+                frame, val_str, (label_x, label_baseline + 34),
+                font_scale=0.92, color=value_color, thickness=2,
+            )
+            if unit_str:
+                val_w = cv2.getTextSize(val_str, cv2.FONT_HERSHEY_DUPLEX, 0.92, 2)[0][0]
+                _put_text_hud(
+                    frame, unit_str, (label_x + val_w + 8, label_baseline + 34),
+                    font_scale=0.42, color=label_color, thickness=1,
+                )
+
+    if active:
+        val_str, unit_str = _format_gauge_value(value, field, unit)
+        value_scale = max(0.55, min(1.35, r / 38.0))
+        unit_scale = max(0.28, value_scale * 0.38)
+        val_size = cv2.getTextSize(val_str, cv2.FONT_HERSHEY_DUPLEX, value_scale, 2)[0]
+        unit_size = cv2.getTextSize(unit_str, cv2.FONT_HERSHEY_DUPLEX, unit_scale, 1)[0] if unit_str else (0, 0)
+        total_w = val_size[0] + (8 + unit_size[0] if unit_str else 0)
+        val_x = cx - total_w // 2
+        val_y = cy + val_size[1] // 2 - 2
+        _put_text_hud(frame, val_str, (val_x, val_y), font_scale=value_scale, color=value_color, thickness=2)
+        if unit_str:
+            _put_text_hud(
+                frame, unit_str,
+                (val_x + val_size[0] + 8, val_y - int(val_size[1] * 0.12)),
+                font_scale=unit_scale, color=label_color, thickness=1,
+            )
+    else:
+        _put_text_hud(
+            frame, "—", (cx - 8, cy + 6),
+            font_scale=0.7, color=value_color, thickness=2,
+        )
+
 
 def _draw_gauge_rgba(
+    frame: np.ndarray,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    value: float | None,
+    min_val: float,
+    max_val: float,
+    label: str,
+    unit: str,
+    arc_color: tuple[int, int, int, int],
+    needle_color: tuple[int, int, int, int],
+    tick_color: tuple[int, int, int, int],
+    label_color: tuple[int, int, int, int],
+    value_color: tuple[int, int, int, int],
+    *,
+    field: str = "speed",
+    style: str = "hud",
+    show_panel: bool = False,
+) -> None:
+    if style == "hud":
+        if show_panel:
+            _draw_rounded_panel_rgba(
+                frame=frame,
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                radius=max(8, int(min(w, h) * 0.1)),
+                alpha=0.35,
+                panel_color_hex="#000000",
+            )
+        _draw_hud_gauge_rgba(
+            frame, x, y, w, h,
+            value=value, min_val=min_val, max_val=max_val,
+            label=label, unit=unit, field=field,
+            tick_color=tick_color, label_color=label_color, value_color=value_color,
+        )
+        return
+
+    _draw_dial_gauge_rgba(
+        frame, x, y, w, h,
+        value=value, min_val=min_val, max_val=max_val,
+        label=label, unit=unit,
+        arc_color=arc_color, needle_color=needle_color,
+        tick_color=tick_color, label_color=label_color, value_color=value_color,
+    )
+
+
+def _draw_dial_gauge_rgba(
     frame: np.ndarray,
     x: int,
     y: int,
@@ -622,4 +1220,3 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
 def _hex_to_bgra(hex_color: str, alpha: int) -> tuple[int, int, int, int]:
     r, g, b = _hex_to_rgb(hex_color)
     return b, g, r, max(0, min(255, int(alpha)))
-

@@ -66,14 +66,16 @@ rc_sticks:
 
 gauges:
   enabled: true
-  layout: horizontal       # used for manual x/y placement only
-  width: 140               # used for manual x/y placement only
-  height: 140
-  x: -1                    # -1 = auto-stack vertical full-width rows below text panel
-  y: 28                    # used when x >= 0
+  style: hud                # hud = DJI-style digital ring; dial = classic needle
+  layout: horizontal        # used for manual x/y placement only
+  width: 140                # used for manual x/y placement only
+  height: 160
+  x: -1                     # -1 = auto-stack vertical full-width rows below text panel
+  y: 28                     # used when x >= 0
   gap: 14
-  arc_color_hex: "#2D3446"
+  show_panel: false
+  arc_color_hex: "#505868"  # dial style track
   needle_color_hex: "#FF4D4F"
-  tick_color_hex: "#6B7280"
+  tick_color_hex: "#FFFFFF"
   label_color_hex: "#C8CDDC"
-  value_color_hex: "#EFF3F8"
+  value_color_hex: "#FFFFFF"
