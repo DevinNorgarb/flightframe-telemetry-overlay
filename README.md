@@ -22,6 +22,7 @@ Enable gauges in YAML with `gauges.enabled: true`. See [`examples/gauges.config.
 - **RC sticks** — Optional mini stick positions when your CSV includes RC channels.
 - **Transparent `.mov`** — Alpha-friendly output (`png` or `qtrle` codec).
 - **SRT export** — Optional subtitle track with the same selected fields.
+- **DJI embedded SRT import** — Parse sidecar `.SRT` telemetry next to drone MP4s into overlay-ready CSV (`import-dji-srt`).
 
 ## Why this stack
 
@@ -115,6 +116,19 @@ brew install pipx
 pipx ensurepath
 pipx install pydjirecord
 ```
+
+### Import DJI embedded telemetry SRT
+
+DJI writes a sidecar `.SRT` next to drone MP4s when subtitle recording is enabled. It already uses the video timeline, so `--telemetry-offset-s` is often `0`.
+
+```bash
+flightframe import-dji-srt \
+  --input-srt "/path/to/DJI_20260606155938_0550_D_DRONE.SRT" \
+  --output-csv ./out/flight.csv \
+  --output-airdata-csv ./out/flight.airdata.csv
+```
+
+Available fields: latitude/longitude, relative altitude (`height_m`), absolute altitude (`altitude_m`), and GPS-derived speed. Battery, satellites, flight mode, and RC sticks are not present in DJI SRT — use `import-dji` with a FlightRecord `.txt` when you need those.
 
 ## Configuration
 
