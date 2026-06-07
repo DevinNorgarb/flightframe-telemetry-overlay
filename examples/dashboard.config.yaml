@@ -1,0 +1,46 @@
+video:
+  x: 28
+  y: 28
+  width: 260
+  row_height: 30
+  opacity: 0.58
+  corner_radius: 14
+
+style:
+  panel_bg_hex: "#1E2434"
+  label_text_hex: "#C8CDDC"
+  value_text_hex: "#EFF3F8"
+  muted_text_hex: "#AAB2C2"
+
+transparent_output:
+  width: 1920
+  height: 1080
+  fps: 30
+  duration_pad_s: 0.0
+  codec: png
+
+telemetry:
+  include: []
+  unit_system: auto
+
+rc_sticks:
+  enabled: false
+
+gauges:
+  enabled: false
+
+dashboard:
+  enabled: true
+  margin: 28
+  speed_gauge_size: 220
+  gforce_size: 110
+  minimap_size: 180
+  show_battery: true
+  show_classic_panel: false
+  # Optional wall-clock anchor for the top-left date/time (ISO-like).
+  start_datetime: ""
+  label_color_hex: "#C8CDDC"
+  value_color_hex: "#FFFFFF"
+  muted_color_hex: "#AAB2C2"
+  path_color_hex: "#00E676"
+  accent_color_hex: "#FFD700"

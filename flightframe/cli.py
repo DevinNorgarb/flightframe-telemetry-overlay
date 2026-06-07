@@ -8,6 +8,7 @@ import typer
 from .config import load_config
 from .csv_parser import load_telemetry
 from .dji_import import convert_dji_txt_to_odl_csv_via_djirecord
+from .dji_srt_import import convert_dji_srt_to_odl_csv
 from .ODL_2_AD import convert_odl_to_airdata
 from .renderer import render_overlay_transparent_video
 from .srt_exporter import export_srt
@@ -180,6 +181,46 @@ def import_dji(
         no_verify=no_verify,
     )
     typer.echo(f"Wrote overlay-ready CSV: {res.odl_csv_path}")
+    if output_airdata_csv is not None:
+        output_airdata_csv.parent.mkdir(parents=True, exist_ok=True)
+        convert_odl_to_airdata(res.odl_csv_path, output_airdata_csv)
+        typer.echo(f"Wrote AirData CSV: {output_airdata_csv}")
+
+
+@app.command("import-dji-srt")
+def import_dji_srt(
+    input_srt: Path | None = typer.Option(
+        None,
+        "--input-srt",
+        exists=True,
+        readable=True,
+        help="DJI embedded telemetry SRT file (or a directory to auto-pick the newest matching .SRT)",
+    ),
+    input_dir: Path | None = typer.Option(
+        None,
+        "--input-dir",
+        exists=True,
+        readable=True,
+        file_okay=False,
+        dir_okay=True,
+        help="Directory to auto-detect the newest DJI telemetry SRT",
+    ),
+    output_csv: Path = typer.Option(..., "--output-csv", help="Output CSV with `time_s` for Flightframe"),
+    output_airdata_csv: Path | None = typer.Option(
+        None,
+        "--output-airdata-csv",
+        help="Optional AirData-style CSV output (generated from the overlay-ready CSV)",
+    ),
+) -> None:
+    """Convert DJI embedded telemetry SRT (sidecar next to drone MP4) into CSV usable by this project."""
+    resolved_srt = _resolve_input_path(
+        explicit_path=input_srt,
+        search_dir=input_dir,
+        patterns=["*D_DRONE.SRT", "*D_DRONE.srt", "*DRONE.SRT", "*DRONE.srt", "*.SRT", "*.srt"],
+        kind="input-srt",
+    )
+    res = convert_dji_srt_to_odl_csv(input_srt=resolved_srt, output_csv=output_csv)
+    typer.echo(f"Wrote overlay-ready CSV ({res.sample_count} samples): {res.odl_csv_path}")
     if output_airdata_csv is not None:
         output_airdata_csv.parent.mkdir(parents=True, exist_ok=True)
         convert_odl_to_airdata(res.odl_csv_path, output_airdata_csv)

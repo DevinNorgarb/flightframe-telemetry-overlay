@@ -11,21 +11,22 @@ from streamlit_drawable_canvas import st_canvas
 
 from flightframe.ODL_2_AD import convert_odl_to_airdata
 from flightframe.cli import render as cli_render
-from flightframe.csv_parser import TelemetryData, load_telemetry
-from flightframe.dji_import import convert_dji_txt_to_odl_csv_via_djirecord
-from opendronelog_overlay.config import (
+from flightframe.config import (
     ComponentRect,
     OverlayComponent,
     OverlayConfig,
     dump_config_yaml,
     load_config,
 )
-from opendronelog_overlay.renderer import _draw_overlay_rgba
+from flightframe.csv_parser import TelemetryData, load_telemetry
+from flightframe.dji_import import convert_dji_txt_to_odl_csv_via_djirecord
+from flightframe.dji_srt_import import convert_dji_srt_to_odl_csv
+from flightframe.renderer import _draw_overlay_rgba
 
 
-st.set_page_config(page_title="OpenDroneLog Overlay", page_icon="🚁", layout="wide")
+st.set_page_config(page_title="Flightframe", page_icon="🚁", layout="wide")
 
-st.title("OpenDroneLog Overlay")
+st.title("Flightframe")
 st.caption("Local-first UI: upload your video + telemetry CSV, align, preview, then export overlay + SRT.")
 
 
@@ -151,12 +152,19 @@ with tab_render:
     with col_a:
         video_file = st.file_uploader("Video file", type=["mp4", "mov", "mkv", "avi"])
     with col_b:
-        telemetry_source = st.radio("Telemetry source", ["CSV (time_s)", "DJI FlightRecord .txt"], horizontal=True)
+        telemetry_source = st.radio(
+            "Telemetry source",
+            ["CSV (time_s)", "DJI embedded SRT", "DJI FlightRecord .txt"],
+            horizontal=True,
+        )
 
         csv_file = None
+        srt_file = None
         txt_file = None
         if telemetry_source.startswith("CSV"):
             csv_file = st.file_uploader("Telemetry CSV (must include `time_s`)", type=["csv"])
+        elif telemetry_source.startswith("DJI embedded"):
+            srt_file = st.file_uploader("DJI embedded telemetry SRT", type=["srt"])
         else:
             txt_file = st.file_uploader("DJI FlightRecord .txt (binary)", type=["txt"])
 
@@ -180,7 +188,53 @@ with tab_render:
         if config_file is not None:
             cfg_path = _save_upload_to_temp(config_file, suffix=Path(config_file.name).suffix or ".yaml")
 
-    if video_file and telemetry_source.startswith("DJI") and txt_file:
+    if video_file and telemetry_source.startswith("DJI embedded") and srt_file:
+        video_path = _save_upload_to_temp(video_file, suffix=Path(video_file.name).suffix or ".mp4")
+        cfg_path = None
+        if config_file is not None:
+            cfg_path = _save_upload_to_temp(config_file, suffix=Path(config_file.name).suffix or ".yaml")
+
+        make_airdata = st.checkbox("Also generate AirData CSV", value=True, key="dji_srt_make_airdata")
+
+        if st.button("Import DJI SRT → CSV"):
+            with st.spinner("Parsing DJI embedded telemetry SRT..."):
+                srt_path = _save_upload_to_temp(srt_file, suffix=".srt")
+                out_dir = Path(tempfile.mkdtemp(prefix="odl-dji-srt-ui-"))
+                out_csv = out_dir / "flight.csv"
+                res = convert_dji_srt_to_odl_csv(input_srt=srt_path, output_csv=out_csv)
+                resolved_csv_path = res.odl_csv_path
+                st.session_state["dji_import_csv_path"] = str(resolved_csv_path)
+
+                if make_airdata:
+                    airdata_csv = out_dir / "flight.airdata.csv"
+                    convert_odl_to_airdata(resolved_csv_path, airdata_csv)
+                    generated_airdata_path = airdata_csv
+                    st.session_state["dji_import_airdata_path"] = str(airdata_csv)
+
+            st.success(f"Import complete ({res.sample_count} samples)")
+
+        if "dji_import_airdata_path" in st.session_state and generated_airdata_path is None:
+            try:
+                p = Path(st.session_state["dji_import_airdata_path"])
+                if p.exists():
+                    generated_airdata_path = p
+            except Exception:
+                pass
+
+        if resolved_csv_path is not None and resolved_csv_path.exists():
+            st.download_button(
+                "Download imported overlay-ready CSV",
+                data=resolved_csv_path.read_bytes(),
+                file_name="flight.csv",
+            )
+        if generated_airdata_path is not None and generated_airdata_path.exists():
+            st.download_button(
+                "Download imported AirData CSV",
+                data=generated_airdata_path.read_bytes(),
+                file_name="flight.airdata.csv",
+            )
+
+    if video_file and telemetry_source.startswith("DJI FlightRecord") and txt_file:
         video_path = _save_upload_to_temp(video_file, suffix=Path(video_file.name).suffix or ".mp4")
         cfg_path = None
         if config_file is not None:

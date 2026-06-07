@@ -16,7 +16,7 @@ dependencies = [
 
 [project.scripts]
 flightframe = "flightframe.cli:app"
-opendronelog-overlay = "opendronelog_overlay.cli:app"
+opendronelog-overlay = "flightframe.cli:app"
 
 [build-system]
 requires = ["setuptools>=68.0"]
