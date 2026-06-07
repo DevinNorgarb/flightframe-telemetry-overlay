@@ -35,8 +35,8 @@ Enable gauges in YAML with `gauges.enabled: true`. See [`examples/gauges.config.
 ## Install
 
 ```bash
-git clone https://github.com/DevinNorgarb/opendronelog-overlay.git
-cd opendronelog-overlay
+git clone https://github.com/DevinNorgarb/flightframe-telemetry-overlay.git
+cd flightframe-telemetry-overlay
 pip install -e .
 ```
 
